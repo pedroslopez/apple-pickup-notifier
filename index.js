@@ -2,57 +2,74 @@ const axios = require('axios').default;
 const { sendNotification } = require("./notify");
 
 const store = "Boca Raton, FL";
-const part = "MLTP3LL/A";
+const parts = ["MLTP3LL/A", "MLTW3LL/A", "MLTT3LL/A", "MLU03LL/A"];
 const cppart = "UNLOCKED/US"
 
 const checkAvailability = async () => {
+  const partParams = parts.reduce(
+    (acc, val, idx) => {
+      acc[`parts.${idx}`] = val; 
+      return acc;
+    }, {}
+  );
+
   const { data } = await axios.get(`https://www.apple.com/shop/fulfillment-messages`, { 
     params: {
       cppart, 
-      "parts.0":part, 
       location: store,
       pl: true,
-      mt: "compact"
+      mt: "compact",
+      ...partParams
     }
   });
 
   const stores = data.body.content.pickupMessage.stores;
   const bocaStore = stores.find(s => s.storeName === "Boca Raton");
-  const availability = bocaStore.partsAvailability[part];
-  const available = availability.storeSelectionEnabled;
 
-  return {available, data: availability};
+  const res = [];
+  for(const part of Object.keys(bocaStore.partsAvailability)) {
+    const availability = bocaStore.partsAvailability[part];
+    const available = availability.storeSelectionEnabled;
+    res.push({part, available, data: availability});
+  }
+
+  return res;
 }
 
-let isAvailable = false;
+const availabilityMap = {};
 
 const loop = async () => {
   console.log("Checking availability...");
-  const {available, data} = await checkAvailability();
-  console.log(`${data.storePickupProductTitle} ${data.pickupDisplay} at ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`);
 
-  if(available && !isAvailable) {
-    console.log("Notifying due to availability change");
-    await sendNotification({
-      title: "Available for pickup", 
-      message: `${data.storePickupQuote}: ${data.storePickupProductTitle}`, 
-      url: "https://www.apple.com/shop/buy-iphone/iphone-13-pro/6.1-inch-display-128gb-graphite-unlocked",
-      priority: 1
-    });
-    isAvailable = true;
-  }
+  const availabilityList = await checkAvailability();
+  for(const {part, available, data} of availabilityList) {
+    console.log(`(${part}) ${data.storePickupProductTitle} ${data.pickupDisplay} at ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`);
 
-  if(!available && isAvailable) {
-    console.log("Notifying due to availability change");
-    await sendNotification({
-      title: "Unavailable for pickup", 
-      message: `${data.storePickupQuote}: ${data.storePickupProductTitle}`,
-    });
-    isAvailable = false;
+    let isAvailable = availabilityMap[part];
+
+    if(available && !isAvailable) {
+      console.log("Notifying due to availability change");
+      await sendNotification({
+        title: "Available for pickup", 
+        message: `${data.storePickupQuote}: ${data.storePickupProductTitle}`, 
+        priority: 1
+      });
+      isAvailable = true;
+    }
+  
+    if(!available && isAvailable) {
+      console.log("Notifying due to availability change");
+      await sendNotification({
+        title: "Unavailable for pickup", 
+        message: `${data.storePickupQuote}: ${data.storePickupProductTitle}`,
+      });
+      isAvailable = false;
+    }
+
+    availabilityMap[part] = isAvailable;
   }
 }
 
 setInterval(loop, 10000);
 loop();
-checkAvailability();
 //&cppart=UNLOCKED/US&parts.0=MLTP3LL/A&location=Boca%20Raton,%20FL

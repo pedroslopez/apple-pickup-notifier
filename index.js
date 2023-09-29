@@ -1,34 +1,38 @@
+const fs = require('fs');
+const yaml = require('yaml')
 const axios = require('axios').default;
 const { sendNotification } = require("./notify");
 
-const store = "Boca Raton, FL";
-const parts = ["MLTP3LL/A", "MLTW3LL/A", "MLTT3LL/A", "MLU03LL/A"];
-const cppart = "UNLOCKED/US"
+const config = yaml.parse(fs.readFileSync('./config.yml', 'utf8'));
 
 const checkAvailability = async () => {
-  const partParams = parts.reduce(
+  const partParams = config.parts.map(p => p.partNumber).reduce(
     (acc, val, idx) => {
       acc[`parts.${idx}`] = val; 
       return acc;
     }, {}
   );
 
-  const { data } = await axios.get(`https://www.apple.com/shop/fulfillment-messages`, { 
+  const { data, config: x } = await axios.get(`https://www.apple.com/shop/fulfillment-messages`, { 
     params: {
-      cppart, 
-      location: store,
+      cppart: config.cppart, 
+      location: config.location,
       pl: true,
-      mt: "compact",
+      "mts.0": "compact",
       ...partParams
     }
   });
 
   const stores = data.body.content.pickupMessage.stores;
-  const bocaStore = stores.find(s => s.storeName === "Boca Raton");
+  const store = stores.find(s => s.storeNumber == config.storeNumber);
 
   const res = [];
-  for(const part of Object.keys(bocaStore.partsAvailability)) {
-    const availability = bocaStore.partsAvailability[part];
+  for(const part of Object.keys(store.partsAvailability)) {
+    const availability = {
+      ...store.partsAvailability[part],
+      ...store.partsAvailability[part].messageTypes.compact
+    };
+
     const available = availability.storeSelectionEnabled;
     res.push({part, available, data: availability});
   }

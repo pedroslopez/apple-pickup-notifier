@@ -49,9 +49,13 @@ const loop = async () => {
   for(const {part, available, data} of availabilityList) {
     console.log(`(${part}) ${data.storePickupProductTitle} ${data.pickupDisplay} at ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`);
 
+    let wasAvailable = availabilityMap[part];
     let isAvailable = availabilityMap[part];
 
-    if(available && !isAvailable) {
+    if(available) {
+      if(wasAvailable && !config.notifications.alwaysNotify) {
+        continue;
+      }
       console.log("Notifying due to availability change");
       await sendNotification({
         title: "Available for pickup", 
@@ -59,9 +63,10 @@ const loop = async () => {
         priority: 1
       });
       isAvailable = true;
-    }
-  
-    if(!available && isAvailable) {
+    } else {
+      if(!wasAvailable && !config.notifications.alwaysNotify) {
+        continue;
+      }
       console.log("Notifying due to availability change");
       await sendNotification({
         title: "Unavailable for pickup", 
@@ -74,6 +79,6 @@ const loop = async () => {
   }
 }
 
-setInterval(loop, 10000);
+setInterval(loop, config.interval);
 loop();
 //&cppart=UNLOCKED/US&parts.0=MLTP3LL/A&location=Boca%20Raton,%20FL

@@ -1,10 +1,10 @@
 location: San Francisco, CA
 storeNumber: R075 # Union Square
 cppart: UNLOCKED/US
+interval: 10000 # 10 seconds
 parts:
-  - partNumber: MU683LL/A
-    name: iPhone 15 Pro Max 256GB Nat
-  - partNumber: MU693LL/A
-    name: iPhone 15 Pro Max 256GB Blue
-  - partNumber: MU663LL/A
-    name: iPhone 15 Pro Max 256GB Black
+  - partNumber: MU683LL/A # iPhone 15 Pro Max 256GB Natural
+  - partNumber: MU693LL/A # iPhone 15 Pro Max 256GB Blue
+  - partNumber: MU663LL/A # iPhone 15 Pro Max 256GB Black
+notifications:
+  alwaysNotify: false

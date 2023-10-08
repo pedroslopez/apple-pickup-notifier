@@ -6,7 +6,7 @@ const { sendNotification } = require("./notify");
 const config = yaml.parse(fs.readFileSync('./config.yml', 'utf8'));
 
 const checkAvailability = async () => {
-  const partParams = config.parts.map(p => p.partNumber).reduce(
+  const partParams = config.parts.reduce(
     (acc, val, idx) => {
       acc[`parts.${idx}`] = val; 
       return acc;
@@ -15,7 +15,7 @@ const checkAvailability = async () => {
 
   const { data, config: x } = await axios.get(`https://www.apple.com/shop/fulfillment-messages`, { 
     params: {
-      cppart: config.cppart, 
+      cppart: config.carrier, 
       location: config.location,
       pl: true,
       "mts.0": "compact",
@@ -24,17 +24,20 @@ const checkAvailability = async () => {
   });
 
   const stores = data.body.content.pickupMessage.stores;
-  const store = stores.find(s => s.storeNumber == config.storeNumber);
 
   const res = [];
-  for(const part of Object.keys(store.partsAvailability)) {
-    const availability = {
-      ...store.partsAvailability[part],
-      ...store.partsAvailability[part].messageTypes.compact
-    };
-
-    const available = availability.storeSelectionEnabled;
-    res.push({part, available, data: availability});
+  for(const storeNumber of config.stores) {
+    const store = stores.find(s => s.storeNumber === storeNumber);
+    if (!store) continue;
+    for(const part of Object.keys(store.partsAvailability)) {
+      const availability = {
+        ...store.partsAvailability[part],
+        ...store.partsAvailability[part].messageTypes.compact
+      };
+  
+      const available = availability.storeSelectionEnabled;
+      res.push({part, store: {number: store.storeNumber, name: store.storeName}, available, data: availability});
+    }
   }
 
   return res;
@@ -42,15 +45,21 @@ const checkAvailability = async () => {
 
 const availabilityMap = {};
 
+const getAvailabilityKey = (store, part) => {
+  return `${store}-${part}`;
+}
+
 const loop = async () => {
-  console.log("Checking availability...");
+  console.log("👀 Checking availability...");
 
   const availabilityList = await checkAvailability();
-  for(const {part, available, data} of availabilityList) {
-    console.log(`(${part}) ${data.storePickupProductTitle} ${data.pickupDisplay} at ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`);
+  for(const {part, store, available, data} of availabilityList) {
+    const icon = available ? "✅" : "❌";
+    console.log(`${icon} (${part}) [${store.name}] ${data.storePickupProductTitle} ${data.pickupDisplay} at ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`);
 
-    let wasAvailable = availabilityMap[part];
-    let isAvailable = availabilityMap[part];
+    const availabilityKey = getAvailabilityKey(store.number, part);
+    let wasAvailable = availabilityMap[availabilityKey];
+    let isAvailable = availabilityMap[availabilityKey];
 
     if(available) {
       if(wasAvailable && !config.notifications.alwaysNotify) {
@@ -59,7 +68,7 @@ const loop = async () => {
       console.log("Notifying due to availability change");
       await sendNotification({
         title: "Available for pickup", 
-        message: `${data.storePickupQuote}: ${data.storePickupProductTitle}`, 
+        message: `${data.storePickupQuote} at ${store.name}: ${data.storePickupProductTitle}`, 
         priority: 1
       });
       isAvailable = true;
@@ -70,12 +79,12 @@ const loop = async () => {
       console.log("Notifying due to availability change");
       await sendNotification({
         title: "Unavailable for pickup", 
-        message: `${data.storePickupQuote}: ${data.storePickupProductTitle}`,
+        message: `${data.storePickupQuote} at ${store.name}: ${data.storePickupProductTitle}`,
       });
       isAvailable = false;
     }
 
-    availabilityMap[part] = isAvailable;
+    availabilityMap[availabilityKey] = isAvailable;
   }
 }
 
